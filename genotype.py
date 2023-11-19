@@ -20,20 +20,40 @@ import numpy as np
 import random
 
 global_parameters = {
+    # NETWORK PARAMETERS
+    ######################################################################################
     # The minimum acceptable number of nodes a layer can have.
     "min_layer_size": 5,
+    # The mean size of a randomly generated neural network layer.
+    "initial_layer_size_mean": 400,
+    # The standard deviation of the size of a randomly generated neural network layer.
+    "initial_layer_size_sigma": 100,
+    # SINGLE-LAYER MUTATION AND CROSSOVER PARAMETERS
+    ######################################################################################
     # Standard deviation of variable-wise Gaussian mutation of weights.
     "gaussian_mutation_weight_sigma": 0.05,
     # Standard deviation of variable-wise Gaussian mutation of biases.
     "gaussian_mutation_bias_sigma": 0.05,
     # Probability that a network layer will be resized during mutation.
-    "rescale_mutation_probability": 0.20,
+    "rescale_mutation_probability": 0.05,
     # The standard deviation of the number of nodes added/removed during rescale mutation.
     "rescale_mutation_sigma": 100,
+    # The alpha value for BLX.
     "blend_crossover_alpha": 0.5,
+    # The eta value for SBX.
     "simulated_binary_crossover_eta": 2.0,
-    # Valid values are "blx" and "sbx"
-    "crossover_type": "sbx"
+    # Valid values: "blx", "sbx"
+    "layer_level_crossover_type": "sbx",
+    # NETWORK-LEVEL MUTATION AND CROSSOVER PARAMETERS
+    ######################################################################################
+    # Probability that a network layer will be added or removed during mutation.
+    "layer_insertion_removal_probability": 0.05,
+    # Probability that a pair of layers will be swapped during mutation.
+    "layer_swap_probability": 0.05,
+    # Probability that two networks will undergo network-split crossover.
+    "network_split_crossover_probability": 0.1,
+    # Probability that two networks will undergo network-mix crossover.
+    "network_mix_crossover_probability": 0.15
 }
 
 def gen_no_duplicates(count, maximum):
@@ -179,6 +199,8 @@ class Layer():
         else:
             return (value0, value1)
     def crossover_blend(self, other):
+        ''' Performs blend crossover on two layers on different networks, after rescaling them to be the same shape.
+        Requires repairing either the layer before or after the one that was rescaled.'''
         self.scale_to_match(other)
         for i in range(self.W.shape[0]):
             for j in range(self.W.shape[1]):
@@ -194,6 +216,8 @@ class Layer():
             self.b[i,0] = child0
             other.b[i,0] = child1
     def crossover_simulated_binary(self, other):
+        '''Performs simulated binary crossover on two layers on different networks, after rescaling them to be the same shape.
+        Requires repairing either the layer before or after the one that was rescaled.'''
         self.scale_to_match(other)
         for i in range(self.W.shape[0]):
             for j in range(self.W.shape[1]):
@@ -208,3 +232,179 @@ class Layer():
             # Assigns the new values.
             self.b[i,0] = child0
             other.b[i,0] = child1
+    def crossover(self, other):
+        '''Performs crossover on two layers on different networks, after rescaling them to be the same shape.
+        Requires repairing either the layer before or after the one that was rescaled.'''
+        crossover_type = global_parameters["layer_level_crossover_type"]
+        if crossover_type == "blx":
+            self.crossover_blend(other)
+        elif crossover_type == "sbx":
+            self.crossover_simulated_binary(other)
+        else:
+            raise ValueError("Invalid layer-level crossover type.")
+
+class Network:
+    def __init__(self, layer_count, input_size, output_size):
+        if layer_count < 1:
+            raise ValueError(F"Cannot create {layer_count}-layer NN.")
+        self.layer_count = layer_count
+        self.input_size = input_size
+        self.output_size = output_size
+        self.layers = []
+        # Generates the size of each layer, including the input layer.
+        # The input and output layers will very likely have incorrect sizes.
+        mean = global_parameters["initial_layer_size_mean"]
+        sigma = global_parameters["initial_layer_size_sigma"]
+        layer_sizes = np.random.default_rng().normal(mean, sigma, (layer_count + 1,))
+        # Fixes any layers that are too small.
+        minimum_sizes = np.ones((layer_count + 1,)) * global_parameters["min_layer_size"]
+        layer_sizes = np.maximum(layer_sizes, minimum_sizes)
+        # Fixes the sizes of the input and output layers.
+        layer_sizes[0] = input_size
+        layer_sizes[-1] = output_size
+        # Iterates over the layer indices, starting from the first non-input layer.
+        for layer_index in range(1, layer_count + 1):
+            this_layer_length = round(layer_sizes[layer_index])
+            previous_layer_length = round(layer_sizes[layer_index - 1])
+            self.layers.append(Layer(this_layer_length, previous_layer_length))
+    def weight_view(self):
+        return [x.W.shape for x in self.layers]
+    def bias_view(self):
+        return [x.b.shape for x in self.layers]
+    def repair_at(self, layer_index):
+        '''Fixes consecutive layers starting at layer_index so that they have compatible dimensions.'''
+        # There is no layer after the last layer, so layer_index cannot be the last index.
+        if layer_index >= self.layer_count - 1:
+            raise ValueError("Cannot use repair_at at the last layer.")
+        first_layer = self.layers[layer_index]
+        second_layer = self.layers[layer_index + 1]
+        # Returns if the layers are already compatible.
+        if first_layer.len1 == second_layer.len0:
+            return
+        # Picks one of the layers to repair. The other is left unchanged.
+        repair_first_layer = random.random() < 0.5
+        if repair_first_layer:
+            first_layer.rescale(second_layer.len0, first_layer.len0)
+        else:
+            second_layer.rescale(second_layer.len1, first_layer.len1)
+    def repair_all(self):
+        '''Fixes all layers that have invalid dimensions.'''
+        # Fixes the first layer, if it has an incorrect input size.
+        if self.layers[0].len0 != self.input_size:
+            self.layers[0].rescale(self.layers[0].len1, self.input_size)
+        # Fixes the last layer, if it has an incorrect output size.
+        if self.layers[-1].len1 != self.output_size:
+            self.layers[-1].rescale(self.output_size, self.layers[-1].len0)
+        # Iterates all layers except the last, repairing consecutive layers.
+        for layer_index in range(len(self.layers) - 1):
+            self.repair_at(layer_index)
+    def _mutate_insert_remove_layer(self):
+        '''Inserts or removes a layer with a certain probability. Requires repair.'''
+        if random.random() < global_parameters["layer_insertion_removal_probability"]:
+            # Determines whether to add or remove a layer.
+            # A layer is always inserted if there is only one layer.
+            insert = self.layer_count == 1 or random.randint() < 0.5
+            if insert:
+                mean = global_parameters["initial_layer_size_mean"]
+                sigma = global_parameters["initial_layer_size_sigma"]
+                min_layer_size = global_parameters["min_layer_size"]
+                # Generates the size of a new layer.
+                layer_size = np.random.default_rng().normal(mean, sigma)
+                # Fixes the size if it is too small.
+                layer_size = np.maximum(layer_size, min_layer_size)
+                # Picks a random spot to insert the layer.
+                insertion_index = random.randint(0, self.layer_count - 1)
+                # Generates the weights and biases of the new layer.
+                new_layer = Layer(layer_size, self.layers[insertion_index].len1)
+                # Inserts the layer.
+                self.layers = self.layers[:insertion_index] + [new_layer] + self.layers[insertion_index:]
+                self.layer_count += 1
+            else:
+                # Picks a random layer to remove.
+                removal_index = random.randint(0, self.layer_count - 1)
+                # Removes the layer.
+                self.layers = self.layers[:removal_index] + self.layers[removal_index + 1:]
+                self.layer_count -= 1
+    def _mutate_layer_swap(self):
+        '''Swaps two random layers with a certain probability. Requires repair.'''
+        if random.random() < global_parameters["layer_swap_probability"]:
+            if self.layer_count > 1:
+                # Picks the first layer to swap.
+                layer1_index = random.randint(0, self.layer_count - 1)
+                remaining_indices = [i for i in range(self.layer_count) if i != layer1_index]
+                # Picks the second layer to swap.
+                layer2_index = random.choice(remaining_indices)
+                layer1 = self.layers[layer1_index]
+                layer2 = self.layers[layer2_index]
+                # Swaps the layers.
+                self.layers[layer1_index] = layer2
+                self.layers[layer2_index] = layer1        
+    def mutate(self):
+        '''Performs mutation and repair on the network.
+        Repair is done once after all mutations are performed.'''
+        # Iterates over the layers and mutates them individually.
+        for layer in self.layers:
+            layer.mutate_gaussian()
+            layer.mutate_rescale()
+        # Mutates the entire network.
+        self._mutate_insert_remove_layer()
+        self._mutate_layer_swap()
+        # Repairs the network.
+        self.repair_all()
+    def _network_split_crossover(self, other):
+        '''Performs network-split crossover with another network, with a certain probability. Requires repair.'''
+        if random.random() < global_parameters["network_split_crossover_probability"]:
+            # If either network consists of a single layer, network-split crossover is not possible.
+            if self.layer_count == 1 or other.layer_count == 1:
+                return
+            # Picks a crossover point on this network.
+            crossover_point_self = random.randint(1, self.layer_count - 1)
+            # Picks a crossover point on the other network.
+            crossover_point_other = random.randint(1, other.layer_count - 1)
+            # Splits the parents.
+            self_segment1 = self.layers[:crossover_point_self]
+            self_segment2 = self.layers[crossover_point_self:]
+            other_segment1 = other.layers[:crossover_point_other]
+            other_segment2 = other.layers[crossover_point_other:]
+            # Crosses the parents.
+            self.layers = self_segment1 + other_segment2
+            other.layers = other_segment1 + self_segment2
+            # Corrects the recorded lengths of the networks.
+            self.layer_count = len(self.layers)
+            other.layer_count = len(other.layers)
+    def _network_mix_crossover(self, other):
+        '''Performs network-mix crossover with another network, with a certain probability. Requires repair.'''
+        if random.random() < global_parameters["network_mix_crossover_probability"]:
+            # The mixable length is the length of the region over which it is possible
+            # to mix the networks.
+            mixable_length = min(self.layer_count, other.layer_count)
+            unmixable_segment = []
+            # If one of the parents is longer than the other, the mixable segments
+            # are the parts of the parents until the last index of the shorter parent.
+            # The unmixable segment is whatever is leftover on the longer parent.
+            if len(self.layers) > len(other.layers):
+                unmixable_segment = self.layers[mixable_length:]
+            elif len(other.layers) > len(self.layers):
+                unmixable_segment = other.layers[mixable_length:]
+            # Truncates the parents so that the unmixable segment is removed.
+            self.layers = self.layers[:mixable_length]
+            other.layers = other.layers[:mixable_length]
+            # Performs crossover on the indivdual layers of the networks.
+            for i in range(mixable_length):
+                # Performs crossover on the layer.
+                self.layers[i].crossover(other.layers[i])
+            # Picks one of the children to give the unmixable segment to.
+            if random.random() < 0.5:
+                self.layers += unmixable_segment
+            else:
+                other.layers += unmixable_segment
+            # Corrects the recorded lengths of the networks.
+            self.layer_count = len(self.layers)
+            other.layer_count = len(other.layers)
+    def crossover(self, other):
+        '''Performs crossover with another network and repairs both.
+        Repair is done once on both networks after crossover is performed.'''
+        self._network_split_crossover(other)
+        self._network_mix_crossover(other)
+        self.repair_all()
+        other.repair_all()
