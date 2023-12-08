@@ -18,45 +18,7 @@ A solution is a sequence of array pairs (W,b):
 
 import numpy as np
 import random
-
-global_parameters = {
-    # NETWORK PARAMETERS
-    ######################################################################################
-    # The minimum acceptable number of nodes a layer can have.
-    "min_layer_size": 5,
-    # The mean size of a randomly generated neural network layer.
-    "initial_layer_size_mean": 400,
-    # The standard deviation of the size of a randomly generated neural network layer.
-    "initial_layer_size_sigma": 100,
-    # SINGLE-LAYER MUTATION AND CROSSOVER PARAMETERS
-    ######################################################################################
-    # Standard deviation of variable-wise Gaussian mutation of weights.
-    "gaussian_mutation_weight_sigma": 0.05,
-    # Standard deviation of variable-wise Gaussian mutation of biases.
-    "gaussian_mutation_bias_sigma": 0.05,
-    # Probability that a network layer will be resized during mutation.
-    "rescale_mutation_probability": 0.05,
-    # The standard deviation of the number of nodes added/removed during rescale mutation.
-    "rescale_mutation_sigma": 100,
-    # The alpha value for BLX.
-    "blend_crossover_alpha": 0.5,
-    # The eta value for SBX.
-    "simulated_binary_crossover_eta": 2.0,
-    # Whether to keep some values from the parent during SBX. This is slow.
-    "simulated_binary_crossover_keep": False,
-    # Valid values: "blx", "sbx"
-    "layer_level_crossover_type": "sbx",
-    # NETWORK-LEVEL MUTATION AND CROSSOVER PARAMETERS
-    ######################################################################################
-    # Probability that a network layer will be added or removed during mutation.
-    "layer_insertion_removal_probability": 0.05,
-    # Probability that a pair of layers will be swapped during mutation.
-    "layer_swap_probability": 0.05,
-    # Probability that two networks will undergo network-split crossover.
-    "network_split_crossover_probability": 0.1,
-    # Probability that two networks will undergo network-mix crossover.
-    "network_mix_crossover_probability": 0.15
-}
+from parameters import global_parameters
 
 def gen_no_duplicates(count, maximum):
     '''Generates 'count' distinct indices between 0 and maximum, not including maximum.'''
@@ -266,7 +228,8 @@ class NetworkType2:
         self.input_size = input_size
         self.output_size = output_size
         self.layers = layers
-    def generate(self, layer_count, input_size, output_size):
+    @classmethod
+    def generate(cls, layer_count, input_size, output_size):
         if layer_count < 1:
             raise ValueError(F"Cannot create a NN with {layer_count} layers.")
         layers = []
@@ -286,7 +249,13 @@ class NetworkType2:
             this_layer_length = round(layer_sizes[layer_index])
             previous_layer_length = round(layer_sizes[layer_index - 1])
             layers.append(Layer.generate(this_layer_length, previous_layer_length))
-        return NetworkType2(layers)
+        return NetworkType2(layer_count, input_size, output_size, layers)
+    def copy(self):
+        '''Returns a copy of this network.'''
+        # Copies every layer.
+        copied_layers = [layer.copy() for layer in self.layers]
+        # Copies this network.
+        return NetworkType2(self.layer_count, self.input_size, self.output_size, copied_layers)
     def weight_view(self):
         return [x.W.shape for x in self.layers]
     def bias_view(self):
