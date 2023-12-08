@@ -42,6 +42,8 @@ global_parameters = {
     "blend_crossover_alpha": 0.5,
     # The eta value for SBX.
     "simulated_binary_crossover_eta": 2.0,
+    # Whether to keep some values from the parent during SBX. This is slow.
+    "simulated_binary_crossover_keep": False,
     # Valid values: "blx", "sbx"
     "layer_level_crossover_type": "sbx",
     # NETWORK-LEVEL MUTATION AND CROSSOVER PARAMETERS
@@ -78,6 +80,33 @@ def gen_with_duplicates(count, maximum):
         # Adds the index to the list of selected indices.
         indices.append(index)
     return indices
+
+def crossover_simulated_binary(parent1, parent2):
+    '''Performs simulated binary crossover on two equal-size matrices.'''
+    eta = global_parameters["simulated_binary_crossover_eta"]
+    # Creates a matrix of uniform random numbers in [0, 1].
+    uniform_numbers = np.random.default_rng().uniform(0, 1, parent1.shape)
+    # Calculates the beta values for the numbers less than or equal to 0.5
+    betas1 = (uniform_numbers <= 0.5) * (2 * uniform_numbers) ** (1 / (eta + 1))
+    # Calculates the beta values for the numbers greater than 0.5
+    betas2 = (uniform_numbers >  0.5) * (1 / (2 * (1 - uniform_numbers))) ** (1 / (eta + 1))
+    # Combines the beta values into one matrix.
+    betas = betas1 + betas2
+    # Calculates variable values closer to the first parent.
+    mixed1 = 0.5 * ((1 + betas) * parent1 + (1 - betas) * parent2)
+    # Calculates variable values closer to the second parent.
+    mixed2 = 0.5 * ((1 - betas) * parent1 + (1 + betas) * parent2)
+    if global_parameters["simulated_binary_crossover_keep"]:
+        # Creates two matrices to represent whether to take values from the mixed matrix or keep the original.
+        keep_parent1 = np.random.default_rng().integers(0, 2, size=parent1.shape)
+        keep_parent2 = np.random.default_rng().integers(0, 2, size=parent1.shape)
+        keep_mixed1 = keep_parent1 == 0
+        keep_mixed2 = keep_parent2 == 0
+        # Creates two children by combining the parent variables with the mixed variables.
+        child1 = keep_parent1 * parent1 + keep_mixed1 * mixed1
+        child2 = keep_parent2 * parent2 + keep_mixed2 * mixed2
+        return (child1, child2)
+    return (mixed1, mixed2)
 
 class Layer():
     def __init__(self, W , b):
@@ -195,20 +224,6 @@ class Layer():
             return (child_value0, child_value1)
         else:
             return (value0, value1)
-    def _variable_sbx(self, value0, value1):
-        '''Performs simulated binary crossover on a single variable with two specified values.'''
-        if random.random() < 0.5:
-            eta = global_parameters["simulated_binary_crossover_eta"]
-            uniform = np.random.default_rng().uniform(0, 1)
-            if uniform <= 0.5:
-                beta = (2 * uniform) ** (1 / (eta + 1))
-            else:
-                beta = (1 / (2 * (1 - uniform))) ** (1 / (eta + 1))
-            child_value0 = 0.5 * ((1 + beta) * value0 + (1 - beta) * value1)
-            child_value1 = 0.5 * ((1 - beta) * value0 + (1 + beta) * value1)
-            return (child_value0, child_value1)
-        else:
-            return (value0, value1)
     def crossover_blend(self, other):
         ''' Performs blend crossover on two layers on different networks, after rescaling them to be the same shape.
         Requires repairing either the layer before or after the one that was rescaled.'''
@@ -230,19 +245,10 @@ class Layer():
         '''Performs simulated binary crossover on two layers on different networks, after rescaling them to be the same shape.
         Requires repairing either the layer before or after the one that was rescaled.'''
         self.scale_to_match(other)
-        for i in range(self.W.shape[0]):
-            for j in range(self.W.shape[1]):
-                # Performs SBX on the weight variables.
-                (child0,child1) = self._variable_sbx(self.W[i,j], other.W[i,j])
-                # Assigns the new values.
-                self.W[i,j] = child0
-                other.W[i,j] = child1
-        for i in range(self.b.shape[0]):
-            # Performs SBX on the bias variables.
-            (child0,child1) = self._variable_sbx(self.b[i,0], other.b[i,0])
-            # Assigns the new values.
-            self.b[i,0] = child0
-            other.b[i,0] = child1
+        # Performs SBX on the weights.
+        self.W, other.W = crossover_simulated_binary(self.W, other.W)
+        # Performs SBX on the biases.
+        self.b, other.b = crossover_simulated_binary(self.b, other.b)
     def crossover(self, other):
         '''Performs crossover on two layers on different networks, after rescaling them to be the same shape.
         Requires repairing either the layer before or after the one that was rescaled.'''
