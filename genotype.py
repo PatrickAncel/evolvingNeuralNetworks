@@ -80,11 +80,22 @@ def gen_with_duplicates(count, maximum):
     return indices
 
 class Layer():
-    def __init__(self, this_layer_length, previous_layer_length):
-        self.len1 = this_layer_length
-        self.len0 = previous_layer_length
-        self.W = np.random.default_rng().normal(0, 1, (self.len1, self.len0))
-        self.b = np.zeros((self.len1, 1))
+    def __init__(self, W , b):
+        self.len1 = W.shape[0]
+        self.len0 = W.shape[1]
+        self.W = W
+        self.b = b
+    @classmethod
+    def generate(cls, this_layer_length, previous_layer_length):
+        '''Generates a random Layer of the specified size.'''
+        W = np.random.default_rng().normal(0, 1, (this_layer_length, previous_layer_length))
+        b = np.zeros((this_layer_length, 1))
+        return Layer(W, b)
+    def copy(self):
+        '''Returns a copy of this Layer.'''
+        new_W = self.W.copy()
+        new_b = self.b.copy()
+        return Layer(new_W, new_b)
     # TODO: Merge shrink and grow into one function.
     def shrink(self, new_len1, new_len0):
         '''Deletes random rows and columns to achieve the required dimensions.'''
@@ -243,14 +254,16 @@ class Layer():
         else:
             raise ValueError("Invalid layer-level crossover type.")
 
-class Network:
-    def __init__(self, layer_count, input_size, output_size):
-        if layer_count < 1:
-            raise ValueError(F"Cannot create {layer_count}-layer NN.")
+class NetworkType2:
+    def __init__(self, layer_count, input_size, output_size, layers):
         self.layer_count = layer_count
         self.input_size = input_size
         self.output_size = output_size
-        self.layers = []
+        self.layers = layers
+    def generate(self, layer_count, input_size, output_size):
+        if layer_count < 1:
+            raise ValueError(F"Cannot create a NN with {layer_count} layers.")
+        layers = []
         # Generates the size of each layer, including the input layer.
         # The input and output layers will very likely have incorrect sizes.
         mean = global_parameters["initial_layer_size_mean"]
@@ -266,7 +279,8 @@ class Network:
         for layer_index in range(1, layer_count + 1):
             this_layer_length = round(layer_sizes[layer_index])
             previous_layer_length = round(layer_sizes[layer_index - 1])
-            self.layers.append(Layer(this_layer_length, previous_layer_length))
+            layers.append(Layer.generate(this_layer_length, previous_layer_length))
+        return NetworkType2(layers)
     def weight_view(self):
         return [x.W.shape for x in self.layers]
     def bias_view(self):
@@ -303,19 +317,19 @@ class Network:
         if random.random() < global_parameters["layer_insertion_removal_probability"]:
             # Determines whether to add or remove a layer.
             # A layer is always inserted if there is only one layer.
-            insert = self.layer_count == 1 or random.randint() < 0.5
+            insert = self.layer_count == 1 or random.random() < 0.5
             if insert:
                 mean = global_parameters["initial_layer_size_mean"]
                 sigma = global_parameters["initial_layer_size_sigma"]
                 min_layer_size = global_parameters["min_layer_size"]
                 # Generates the size of a new layer.
-                layer_size = np.random.default_rng().normal(mean, sigma)
+                layer_size = round(np.random.default_rng().normal(mean, sigma))
                 # Fixes the size if it is too small.
                 layer_size = np.maximum(layer_size, min_layer_size)
                 # Picks a random spot to insert the layer.
                 insertion_index = random.randint(0, self.layer_count - 1)
                 # Generates the weights and biases of the new layer.
-                new_layer = Layer(layer_size, self.layers[insertion_index].len1)
+                new_layer = Layer.generate(layer_size, self.layers[insertion_index].len1)
                 # Inserts the layer.
                 self.layers = self.layers[:insertion_index] + [new_layer] + self.layers[insertion_index:]
                 self.layer_count += 1
