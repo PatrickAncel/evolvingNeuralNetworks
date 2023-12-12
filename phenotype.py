@@ -20,7 +20,8 @@ class NetworkPhenotype(torch.nn.Module):
                 self.layers.append(torch.nn.ReLU())
             else:
                 # Sigmoid Activation
-                self.layers.append(torch.nn.Sigmoid())
+                #self.layers.append(torch.nn.Sigmoid())
+                pass
     
     def forward(self, input):
         output = input.view(-1, self.input_size)

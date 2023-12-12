@@ -43,6 +43,40 @@ def gen_with_duplicates(count, maximum):
         indices.append(index)
     return indices
 
+def change_uniform_range(u, lower, upper):
+    '''Given u ~ U(0, 1), returns a value v ~ U(lower, upper).
+    If u, lower, and upper are all matrices of the same size,
+    then v[i,j] ~ U(lower[i,j], upper[i,j]).'''
+    return (upper - lower) * u + lower
+
+
+def crossover_blend(parent1, parent2):
+    '''Performs blend crossover on two equal-size matrices.'''
+    alpha = global_parameters["blend_crossover_alpha"]
+    # Generates two matrices of uniformly distributed values.
+    uniform1 = np.random.default_rng().uniform(0, 1, parent1.shape)
+    uniform2 = np.random.default_rng().uniform(0, 1, parent1.shape)
+    # Creates matrices of indicators to determine which matrix to get values from.
+    indicators1 = (parent1 < parent2)
+    indicators2 = (parent1 >= parent2)
+    # Calculates some values that are used to alter the ranges of the uniform distributions.
+    center = 0.5 * (parent1 + parent2)
+    bound = parent1 - alpha * (parent2 - parent1)
+    # Converts the ranges of the uniform numbers to be around the centroid of the parents.
+    child1_partial1 = change_uniform_range(uniform1, bound, center)
+    child1_partial2 = change_uniform_range(uniform2, center, bound)
+    child1 = indicators1 * child1_partial1 + indicators2 * child1_partial2
+    # Calculates the second child.
+    child2 = parent1 + parent2 - child1
+    if global_parameters["blend_crossover_keep"]:
+        # Creates a matrix to represent whether to take values from the child matrix or keep the original.
+        keep_parent = np.random.default_rng().integers(0, 2, size=parent1.shape)
+        keep_child = keep_parent == 0
+        # Updates the children by reinserting some of the original values.
+        child1 = keep_parent * parent1 + keep_child * child1
+        child2 = keep_parent * parent2 + keep_child * child2
+    return (child1, child2)
+
 def crossover_simulated_binary(parent1, parent2):
     '''Performs simulated binary crossover on two equal-size matrices.'''
     eta = global_parameters["simulated_binary_crossover_eta"]
@@ -59,14 +93,12 @@ def crossover_simulated_binary(parent1, parent2):
     # Calculates variable values closer to the second parent.
     mixed2 = 0.5 * ((1 - betas) * parent1 + (1 + betas) * parent2)
     if global_parameters["simulated_binary_crossover_keep"]:
-        # Creates two matrices to represent whether to take values from the mixed matrix or keep the original.
-        keep_parent1 = np.random.default_rng().integers(0, 2, size=parent1.shape)
-        keep_parent2 = np.random.default_rng().integers(0, 2, size=parent1.shape)
-        keep_mixed1 = keep_parent1 == 0
-        keep_mixed2 = keep_parent2 == 0
+        # Creates a matrix to represent whether to take values from the mixed matrix or keep the original.
+        keep_parent = np.random.default_rng().integers(0, 2, size=parent1.shape)
+        keep_mixed = keep_parent == 0
         # Creates two children by combining the parent variables with the mixed variables.
-        child1 = keep_parent1 * parent1 + keep_mixed1 * mixed1
-        child2 = keep_parent2 * parent2 + keep_mixed2 * mixed2
+        child1 = keep_parent * parent1 + keep_mixed * mixed1
+        child2 = keep_parent * parent2 + keep_mixed * mixed2
         return (child1, child2)
     return (mixed1, mixed2)
 
@@ -161,6 +193,8 @@ class Layer():
             # Keeps the size of the layer within bounds.
             if new_len1 < global_parameters["min_layer_size"]:
                 new_len1 = global_parameters["min_layer_size"]
+            if new_len1 > global_parameters["max_layer_size"]:
+                new_len1 = global_parameters["max_layer_size"]
             self.rescale(new_len1, self.len0)
     def _variable_blend(self, value0, value1):
         '''Performs blend crossover on a single variable with two specified values.'''
@@ -190,6 +224,10 @@ class Layer():
         ''' Performs blend crossover on two layers on different networks, after rescaling them to be the same shape.
         Requires repairing either the layer before or after the one that was rescaled.'''
         self.scale_to_match(other)
+        # # Performs BLX on the weights.
+        # self.W, other.W = crossover_blend(self.W, other.W)
+        # # Performs BLX on the biases.
+        # self.b, other.b = crossover_blend(self.b, other.b)
         for i in range(self.W.shape[0]):
             for j in range(self.W.shape[1]):
                 # Performs BLX on the weight variables.
@@ -241,6 +279,9 @@ class NetworkType2:
         # Fixes any layers that are too small.
         minimum_sizes = np.ones((layer_count + 1,)) * global_parameters["min_layer_size"]
         layer_sizes = np.maximum(layer_sizes, minimum_sizes)
+        # Fixes any layers that are too large.
+        maximum_sizes = np.ones((layer_count + 1,)) * global_parameters["max_layer_size"]
+        layer_sizes = np.maximum(layer_sizes, maximum_sizes)
         # Fixes the sizes of the input and output layers.
         layer_sizes[0] = input_size
         layer_sizes[-1] = output_size
@@ -297,10 +338,13 @@ class NetworkType2:
                 mean = global_parameters["initial_layer_size_mean"]
                 sigma = global_parameters["initial_layer_size_sigma"]
                 min_layer_size = global_parameters["min_layer_size"]
+                max_layer_size = global_parameters["max_layer_size"]
                 # Generates the size of a new layer.
                 layer_size = round(np.random.default_rng().normal(mean, sigma))
                 # Fixes the size if it is too small.
                 layer_size = np.maximum(layer_size, min_layer_size)
+                # Fixes the size if it is too large.
+                layer_size = np.minimum(layer_size, max_layer_size)
                 # Picks a random spot to insert the layer.
                 insertion_index = random.randint(0, self.layer_count - 1)
                 # Generates the weights and biases of the new layer.

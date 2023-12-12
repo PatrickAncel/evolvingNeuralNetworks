@@ -1,14 +1,17 @@
 global_parameters = {
-    # POPULATION PARAMETERS
+    # EVOLUTION PARAMETERS
     ######################################################################################
     # The number of individuals in the population.
-    "population_size": 25,
+    "population_size": 6,
     # The number of generations to run the GA for.
-    "generation_count": 50,
+    "generation_count": 25,
     # NETWORK PARAMETERS
     ######################################################################################
+    "network_type": 2,
     # The minimum acceptable number of nodes a layer can have.
     "min_layer_size": 5,
+    # The maximum acceptable number of nodes a layer can have.
+    "max_layer_size": 4000,
     # The mean size of a randomly generated neural network layer.
     "initial_layer_size_mean": 400,
     # The standard deviation of the size of a randomly generated neural network layer.
@@ -27,6 +30,8 @@ global_parameters = {
     "rescale_mutation_sigma": 100,
     # The alpha value for BLX.
     "blend_crossover_alpha": 0.5,
+    # Whether to keep some values from the parent during BLX.
+    "blend_crossover_keep": False,
     # The eta value for SBX.
     "simulated_binary_crossover_eta": 2.0,
     # Whether to keep some values from the parent during SBX. This is slow.
