@@ -21,7 +21,7 @@ criterion = torch.nn.CrossEntropyLoss()
 
 def calc_fitness(geno_network):
     # Converts the genotype into the phenotype.
-    phen_network = phenotype.NetworkPhenotype(geno_network.layers)
+    phen_network = phenotype.NetworkPhenotype(geno_network.get_layers())
     fitness = 0
     with torch.no_grad():
         for batch, label in tqdm.tqdm(dataloader_train):
@@ -93,7 +93,7 @@ def evaluate_solution(solution):
     '''Evaluates the accuracy of a network on the test dataset.'''
     print("Evaluating Best Solution")
     score = 0
-    phen_network = phenotype.NetworkPhenotype(solution.layers)
+    phen_network = phenotype.NetworkPhenotype(solution.get_layers())
     with torch.no_grad():
         for batch, label in tqdm.tqdm(dataloader_test):
             output = phen_network(batch)
@@ -147,7 +147,9 @@ def evolve(network_class):
     print("Done Evolving")
 
 if __name__ == "__main__":
-    if global_parameters["network_type"] == 2:
+    if global_parameters["network_type"] == 1:
+        network_class = genotype.NetworkType1
+    elif global_parameters["network_type"] == 2:
         network_class = genotype.NetworkType2
     else:
         raise ValueError(F"Invalid network type: {global_parameters['network_type']}")

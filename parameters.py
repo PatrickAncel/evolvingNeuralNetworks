@@ -7,17 +7,21 @@ global_parameters = {
     "generation_count": 25,
     # NETWORK PARAMETERS
     ######################################################################################
-    "network_type": 2,
+    "network_type": 1,
     # The minimum acceptable number of nodes a layer can have.
     "min_layer_size": 5,
     # The maximum acceptable number of nodes a layer can have.
-    "max_layer_size": 4000,
+    "max_layer_size": 3072,#4000,
     # The mean size of a randomly generated neural network layer.
     "initial_layer_size_mean": 400,
     # The standard deviation of the size of a randomly generated neural network layer.
     "initial_layer_size_sigma": 100,
     # The size of an initial population member.
-    "initial_layer_count": 5,
+    "initial_layer_count": 4,#5,
+    # TYPE 1 PARAMETERS
+    ######################################################################################
+    "type_1_crossover_rate": 0.8,
+    "type_1_mutation_rate": 0.5,
     # SINGLE-LAYER MUTATION AND CROSSOVER PARAMETERS
     ######################################################################################
     # Standard deviation of variable-wise Gaussian mutation of weights.
@@ -37,7 +41,7 @@ global_parameters = {
     # Whether to keep some values from the parent during SBX. This is slow.
     "simulated_binary_crossover_keep": False,
     # Valid values: "blx", "sbx"
-    "layer_level_crossover_type": "sbx",
+    "layer_level_crossover_type": "blx",
     # NETWORK-LEVEL MUTATION AND CROSSOVER PARAMETERS
     ######################################################################################
     # Probability that a network layer will be added or removed during mutation.

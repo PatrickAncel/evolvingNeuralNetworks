@@ -103,7 +103,7 @@ def crossover_simulated_binary(parent1, parent2):
     return (mixed1, mixed2)
 
 class Layer():
-    def __init__(self, W , b):
+    def __init__(self, W, b):
         self.len1 = W.shape[0]
         self.len0 = W.shape[1]
         self.W = W
@@ -119,7 +119,6 @@ class Layer():
         new_W = self.W.copy()
         new_b = self.b.copy()
         return Layer(new_W, new_b)
-    # TODO: Merge shrink and grow into one function.
     def shrink(self, new_len1, new_len0):
         '''Deletes random rows and columns to achieve the required dimensions.'''
         if new_len1 < self.len1:
@@ -260,6 +259,55 @@ class Layer():
         else:
             raise ValueError("Invalid layer-level crossover type.")
 
+class NetworkType1:
+    def __init__(self, layer_count, layer_size, input_size, output_size, vector):
+        self.layer_count = layer_count
+        self.layer_size = layer_size
+        self.input_size = input_size
+        self.output_size = output_size
+        self.vector = vector
+    @classmethod
+    def generate(cls, layer_count, input_size, output_size):
+        layer_size = global_parameters["max_layer_size"]
+        vector = np.random.default_rng().normal(0, 1, (layer_count * (layer_size + layer_size ** 2)))
+        return NetworkType1(layer_count, layer_size, input_size, output_size, vector)
+    def copy(self):
+        copied_vector = self.vector.copy()
+        return NetworkType1(self.layer_count, self.layer_size, self.input_size, self.output_size, copied_vector)
+    def get_layers(self):
+        layers = []
+        for i in range(self.layer_count):
+            weight_start_index = i * (self.layer_size + self.layer_size ** 2)
+            bias_start_index = weight_start_index + self.layer_size ** 2
+            next_weight_start_index = (i + 1) * (self.layer_size + self.layer_size ** 2)
+            if i < self.layer_count - 1:
+                W = self.vector[weight_start_index:bias_start_index].reshape((self.layer_size, self.layer_size))
+                b = self.vector[bias_start_index:next_weight_start_index].reshape((self.layer_size, 1))
+            else:
+                weight_end_index = weight_start_index + (self.layer_size * self.output_size)
+                bias_end_index = bias_start_index + self.output_size
+                W = self.vector[weight_start_index:weight_end_index].reshape((self.output_size, self.layer_size))
+                b = self.vector[bias_start_index:bias_end_index].reshape((self.output_size, 1))
+            layer = Layer(W, b)
+            layers.append(layer)
+        return layers
+    def mutate(self):
+        if random.random() < global_parameters["type_1_mutation_rate"]:
+            sigma = global_parameters["gaussian_mutation_weight_sigma"]
+            # Generates the offsets to add to the parameters.
+            offsets = np.random.default_rng().normal(0, sigma, self.vector.shape)
+            self.vector = self.vector + offsets
+    def crossover(self, other):
+        if random.random() < global_parameters["type_1_mutation_rate"]:
+            crossover_type = global_parameters["layer_level_crossover_type"]
+            if crossover_type == "blx":
+                crossover_function = crossover_blend
+            elif crossover_type == "sbx":
+                crossover_function = crossover_simulated_binary
+            else:
+                raise ValueError("Invalid crossover type.")
+            self.vector, other.vector = crossover_function(self.vector, other.vector)
+
 class NetworkType2:
     def __init__(self, layer_count, input_size, output_size, layers):
         self.layer_count = layer_count
@@ -297,6 +345,8 @@ class NetworkType2:
         copied_layers = [layer.copy() for layer in self.layers]
         # Copies this network.
         return NetworkType2(self.layer_count, self.input_size, self.output_size, copied_layers)
+    def get_layers(self):
+        return self.layers
     def weight_view(self):
         return [x.W.shape for x in self.layers]
     def bias_view(self):
