@@ -2,12 +2,12 @@ global_parameters = {
     # EVOLUTION PARAMETERS
     ######################################################################################
     # The number of individuals in the population.
-    "population_size": 6,
+    "population_size": 12,
     # The number of generations to run the GA for.
     "generation_count": 25,
     # NETWORK PARAMETERS
     ######################################################################################
-    "network_type": 1,
+    "network_type": 2,
     # The minimum acceptable number of nodes a layer can have.
     "min_layer_size": 5,
     # The maximum acceptable number of nodes a layer can have.
@@ -41,7 +41,7 @@ global_parameters = {
     # Whether to keep some values from the parent during SBX. This is slow.
     "simulated_binary_crossover_keep": False,
     # Valid values: "blx", "sbx"
-    "layer_level_crossover_type": "blx",
+    "layer_level_crossover_type": "sbx",
     # NETWORK-LEVEL MUTATION AND CROSSOVER PARAMETERS
     ######################################################################################
     # Probability that a network layer will be added or removed during mutation.
