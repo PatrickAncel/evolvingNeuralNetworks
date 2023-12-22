@@ -1,1 +1,1 @@
-# cse848project
+# Evolutionary Operators on Neural Networks
